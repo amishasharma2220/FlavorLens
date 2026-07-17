@@ -1,22 +1,25 @@
 # FlavorLens 🍽️
-### Restaurant Expansion Intelligence Platform
 
-> Helping restaurant owners, investors, and food businesses make data-driven expansion decisions across Indian cities.
+### Restaurant Expansion Intelligence Platform (v1 scope: Bangalore, by locality)
+
+> Helping restaurant owners and food businesses evaluate cuisine opportunities in Bangalore using data instead of guesswork.
+
+See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for system design and [`FLOWS.md`](./FLOWS.md) for how data and users move through the app.
 
 ---
 
 ## Problem Statement
 
-Opening a restaurant in the wrong city or choosing an oversaturated cuisine is one of the most common causes of restaurant failure. FlavorLens replaces intuition with evidence — combining multi-source restaurant data, SQL analytics, and LLM-assisted explanations to answer the question every restaurateur asks:
+Opening a restaurant in the wrong locality or choosing an oversaturated cuisine is one of the more avoidable causes of restaurant failure. FlavorLens replaces intuition with evidence — combining restaurant data, SQL analytics, and LLM-assisted explanations to help answer:
 
-**"Where should I open, what should I serve, and why?"**
+**"Which cuisine has real opportunity in this locality, and why?"**
 
 ---
 
 ## Architecture
 
 ```
-Public Datasets (Zomato, Swiggy, Census)
+Zomato Bangalore Restaurants dataset (Kaggle)
             │
             ▼
     Data Cleaning Pipeline (Python/Pandas)
@@ -25,18 +28,17 @@ Public Datasets (Zomato, Swiggy, Census)
       PostgreSQL Database
             │
             ▼
-    SQL Analytics Layer (domain-grouped queries)
+    SQL Analytics Layer (locality/cuisine aggregation)
             │
             ▼
    Python Processing (COI scoring, confidence)
             │
-         ┌──┴──┐
-         ▼     ▼
-     Power BI  Streamlit Web App
-               │
-               ▼
+            ▼
+      Streamlit Web App
+            │
+            ▼
        Expansion Copilot
-       (LLM explains SQL-derived metrics only)
+       (LLM explains pre-computed metrics only — never calculates)
 ```
 
 ---
@@ -49,29 +51,29 @@ Public Datasets (Zomato, Swiggy, Census)
 | Processing | Python, Pandas, NumPy |
 | Analytics | SQL |
 | Frontend | Streamlit, Plotly |
-| BI Dashboard | Power BI |
 | LLM | Claude API (Anthropic) |
-| Deployment | Streamlit Cloud |
+| Deployment | Streamlit Community Cloud |
 
 ---
 
 ## Core Features
 
 ### Cuisine Opportunity Index (COI)
-A composite score built from five independently calculated components:
-- **Demand Score** — review volume and growth signals
-- **Competition Score** — restaurant density for the cuisine
-- **Growth Score** — rating trajectory over time
-- **Rating Stability** — consistency of customer satisfaction
-- **Affordability Index** — price positioning vs. city average
 
-Weights are configurable via Streamlit sliders. Every score includes a **Confidence Rating** that drops when data is sparse.
+A composite score built from independently calculated components:
+
+- **Demand Score** — review volume and rating signals
+- **Competition Score** — restaurant density for the cuisine in a locality
+- **Rating Stability** — consistency of customer ratings
+- **Affordability Index** — price positioning vs. locality average
+
+Default weights live in `config.py` and are documented there with the reasoning behind each. Every score includes a **Confidence Rating** that drops when data is sparse — it does not get papered over with filler data.
+
+*Growth is not currently included as a COI component — the dataset doesn't include reliable historical/establishment-date data. If a growth signal is added later, it will be clearly labeled as a proxy (e.g. votes as an engagement signal), not framed as true trend data.*
 
 ### Expansion Copilot
-An LLM-assisted explanation engine (not a chatbot). The model is given only pre-calculated metrics and generates natural-language business recommendations. **The LLM never calculates — it only explains.**
 
-### Restaurant Launch Simulator
-Input: City + Cuisine + Price Segment → Output: Full COI breakdown, competitor analysis, recommended locality, and evidence cards.
+An LLM-assisted explanation layer, not a chatbot. The model receives only pre-calculated metrics and generates a plain-language explanation. **It never calculates — it only explains.**
 
 ---
 
@@ -79,26 +81,19 @@ Input: City + Cuisine + Price Segment → Output: Full COI breakdown, competitor
 
 | Source | Purpose |
 |---|---|
-| Zomato Kaggle Dataset | Restaurant metadata, ratings, cuisine |
-| Swiggy Dataset | Delivery coverage, additional restaurants |
-| Census of India | City population for density normalization |
+| Zomato Bangalore Restaurants dataset (Kaggle) | Restaurant metadata, ratings, cuisine, cost, locality |
 
-*Architecture supports additional sources without schema redesign.*
-
----
-
-## COI Methodology
-
-See the **Methodology** page in the Streamlit app for a full explanation of each component, the confidence scoring system, and known limitations.
+No live scraping — Zomato and Swiggy no longer offer public data access, so this project uses a static, disclosed snapshot rather than pretending otherwise.
 
 ---
 
 ## Known Limitations
 
-- Dataset is a snapshot, not live data — trend analysis is indicative, not real-time
-- Review text availability varies by source
-- Synthetic data used for cities with sparse coverage (clearly labeled)
-- COI weights are business assumptions — users are encouraged to adjust them
+- Single city (Bangalore), by locality — not a multi-city platform yet
+- Dataset is a snapshot, not live — trend claims are not supported by v1
+- No historical/growth data — growth is omitted or explicitly proxied, never fabricated
+- COI weights are documented business assumptions, not derived ground truth — open to revision as the methodology matures
+- No synthetic or filler data is ever used for sparse localities; low coverage shows up as low confidence instead
 
 ---
 
@@ -111,7 +106,6 @@ See the **Methodology** page in the Streamlit app for a full explanation of each
 - [ ] COI implementation
 - [ ] Streamlit dashboard
 - [ ] Expansion Copilot
-- [ ] Power BI dashboard
 - [ ] Deployment
 
 ---
@@ -119,12 +113,12 @@ See the **Methodology** page in the Streamlit app for a full explanation of each
 ## Local Setup
 
 ```bash
-git clone https://github.com/yourusername/FlavorLens.git
+git clone https://github.com/amishasharma2220/FlavorLens.git
 cd FlavorLens
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env      # Fill in your credentials
+cp .env.example .env      # fill in your credentials
 streamlit run streamlit/app.py
 ```
 

@@ -24,8 +24,8 @@ env/
 *.ipynb
 
 # Data (raw data never committed)
-data/raw/
-data/processed/*.csv
+**/data/raw/
+**/data/processed/*.csv
 
 # IDE
 .vscode/
