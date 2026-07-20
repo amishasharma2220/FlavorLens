@@ -104,7 +104,7 @@ No live scraping — Zomato and Swiggy no longer offer public data access, so th
 - [ ] PostgreSQL schema and data load
 - [x] SQL analytics layer
 - [x] COI implementation
-- [ ] Streamlit dashboard
+- [x] Streamlit dashboard
 - [ ] Expansion Copilot
 - [ ] Deployment
 
