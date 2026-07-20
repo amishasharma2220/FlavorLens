@@ -103,10 +103,16 @@ def compute_confidence(rated_count: pd.Series, total_votes: pd.Series) -> pd.Ser
 
 # --- Main COI computation ---------------------------------------------------
 
-def compute_coi(df: pd.DataFrame = None, locality_avg: pd.DataFrame = None) -> pd.DataFrame:
+def compute_coi(df: pd.DataFrame = None, locality_avg: pd.DataFrame = None,
+                 weights: dict = None) -> pd.DataFrame:
     """
     Computes normalized component scores, final COI, and confidence for
     every (locality, cuisine) pair.
+
+    weights: optional override dict with keys demand/competition/
+    affordability/rating_stability (must sum to 1.0, or will be
+    renormalized to do so). If not provided, falls back to
+    get_effective_weights() (config.py defaults, growth redistributed).
     """
     if df is None or locality_avg is None:
         engine = get_engine()
@@ -144,7 +150,15 @@ def compute_coi(df: pd.DataFrame = None, locality_avg: pd.DataFrame = None) -> p
     df["confidence"] = compute_confidence(df["rated_restaurant_count"], df["total_votes"])
 
     # --- Final weighted COI ---
-    weights = get_effective_weights()
+    if weights is None:
+        weights = get_effective_weights()
+    else:
+        # Defensive: renormalize any custom weights (e.g. from Streamlit
+        # sliders) to guarantee they sum to 1.0, regardless of what the
+        # UI passes in.
+        total = sum(weights.values())
+        weights = {k: v / total for k, v in weights.items()}
+
     df["coi"] = (
         weights["demand"] * df["demand_score"]
         + weights["competition"] * df["competition_score"]
