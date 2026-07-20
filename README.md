@@ -38,7 +38,7 @@ Zomato Bangalore Restaurants dataset (Kaggle)
             │
             ▼
        Expansion Copilot
-       (LLM explains pre-computed metrics only — never calculates)
+       (Groq / Llama 3.1 — explains pre-computed metrics only, never calculates)
 ```
 
 ---
@@ -51,8 +51,10 @@ Zomato Bangalore Restaurants dataset (Kaggle)
 | Processing | Python, Pandas, NumPy |
 | Analytics | SQL |
 | Frontend | Streamlit, Plotly |
-| LLM | Claude API (Anthropic) |
+| LLM | Groq API (Llama 3.1) — free tier, no billing required |
 | Deployment | Streamlit Community Cloud |
+
+*Note: Groq's free API (Llama 3.1) is used instead of a paid provider — it keeps the project fully reproducible without requiring anyone (including graders or interviewers testing it) to add billing to run it.*
 
 ---
 
@@ -60,20 +62,20 @@ Zomato Bangalore Restaurants dataset (Kaggle)
 
 ### Cuisine Opportunity Index (COI)
 
-A composite score built from independently calculated components:
+A composite score built from four independently calculated components:
 
-- **Demand Score** — review volume and rating signals
-- **Competition Score** — restaurant density for the cuisine in a locality
-- **Rating Stability** — consistency of customer ratings
-- **Affordability Index** — price positioning vs. locality average
+- **Demand Score** — average customer engagement (votes) per restaurant
+- **Competition Score** — restaurant density for the cuisine in a locality, inverted so lower competition scores higher
+- **Affordability Score** — how much cheaper a cuisine is than the locality's own average cost
+- **Rating Stability** — consistency of customer ratings (inverted standard deviation)
 
-Default weights live in `config.py` and are documented there with the reasoning behind each. Every score includes a **Confidence Rating** that drops when data is sparse — it does not get papered over with filler data.
+Default weights live in `config.py` and are documented there with the reasoning behind each. They're also adjustable live via sliders in the Streamlit app — the defaults are starting assumptions, not derived ground truth. Every score includes a **Confidence Rating** based on rated-restaurant count and review volume, so a high COI backed by little data reads differently than one backed by a lot.
 
-*Growth is not currently included as a COI component — the dataset doesn't include reliable historical/establishment-date data. If a growth signal is added later, it will be clearly labeled as a proxy (e.g. votes as an engagement signal), not framed as true trend data.*
+*Growth is not included as a COI component — the dataset doesn't include reliable historical/establishment-date data. Its configured weight is redistributed proportionally across the other four components rather than left as a gap or faked with a proxy metric. See `ARCHITECTURE.md` for details.*
 
 ### Expansion Copilot
 
-An LLM-assisted explanation layer, not a chatbot. The model receives only pre-calculated metrics and generates a plain-language explanation. **It never calculates — it only explains.**
+An LLM-assisted explanation layer, not a chatbot, powered by Groq (Llama 3.1). The model receives only pre-calculated metrics and generates a plain-language explanation. **It never calculates — it only explains.**
 
 ---
 
@@ -91,21 +93,22 @@ No live scraping — Zomato and Swiggy no longer offer public data access, so th
 
 - Single city (Bangalore), by locality — not a multi-city platform yet
 - Dataset is a snapshot, not live — trend claims are not supported by v1
-- No historical/growth data — growth is omitted or explicitly proxied, never fabricated
-- COI weights are documented business assumptions, not derived ground truth — open to revision as the methodology matures
+- No historical/growth data — growth is omitted rather than fabricated or proxied
+- COI weights are documented business assumptions, not derived ground truth — adjustable in the app, open to revision as the methodology matures
 - No synthetic or filler data is ever used for sparse localities; low coverage shows up as low confidence instead
+- The source dataset had a known duplicate-listing issue (same restaurant listed once per order type); this was deduplicated during cleaning — see `python/db/load_data.py`
 
 ---
 
 ## Project Roadmap
 
 - [x] Project structure and configuration
-- [ ] Data cleaning pipeline
-- [ ] PostgreSQL schema and data load
+- [x] Data cleaning pipeline
+- [x] PostgreSQL schema and data load
 - [x] SQL analytics layer
 - [x] COI implementation
 - [x] Streamlit dashboard
-- [ ] Expansion Copilot
+- [x] Expansion Copilot
 - [ ] Deployment
 
 ---
@@ -115,12 +118,14 @@ No live scraping — Zomato and Swiggy no longer offer public data access, so th
 ```bash
 git clone https://github.com/amishasharma2220/FlavorLens.git
 cd FlavorLens
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env      # fill in your credentials
+cp .env.example .env      # fill in your DB credentials and GROQ_API_KEY
 streamlit run streamlit/app.py
 ```
+
+Requires a running PostgreSQL instance (see `python/db/schema.sql` for the schema) and a free Groq API key from [console.groq.com](https://console.groq.com) for the Expansion Copilot feature — the rest of the app works fully without it.
 
 ---
 
