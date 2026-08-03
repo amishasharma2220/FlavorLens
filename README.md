@@ -109,7 +109,7 @@ No live scraping — Zomato and Swiggy no longer offer public data access, so th
 - [x] COI implementation
 - [x] Streamlit dashboard
 - [x] Expansion Copilot
-- [ ] Deployment
+- [x] Deployment
 
 ---
 
@@ -124,6 +124,7 @@ pip install -r requirements.txt
 cp .env.example .env      # fill in your DB credentials and GROQ_API_KEY
 streamlit run streamlit/app.py
 ```
+**[Live demo](https://flavorlens-4uyeebubdu4u674bz8rtro.streamlit.app/)**
 
 Requires a running PostgreSQL instance (see `python/db/schema.sql` for the schema) and a free Groq API key from [console.groq.com](https://console.groq.com) for the Expansion Copilot feature — the rest of the app works fully without it.
 
