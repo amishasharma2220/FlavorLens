@@ -9,6 +9,19 @@ renders them. See ARCHITECTURE.md for why that separation matters.
 import sys
 import os
 import streamlit as st
+
+# Streamlit Community Cloud provides secrets via st.secrets, not a .env file.
+# Bridge them into environment variables here, before any local module
+# (config.py, coi_calculator.py, queries.py) is imported — those modules
+# read os.getenv() at import time, so this must run first. Locally, where
+# no secrets.toml exists, this silently does nothing and .env (loaded via
+# python-dotenv in config.py) is used instead.
+try:
+    for key, value in st.secrets.items():
+        os.environ[key] = str(value)
+except Exception:
+    pass
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
