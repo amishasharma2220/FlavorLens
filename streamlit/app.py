@@ -10,12 +10,18 @@ import sys
 import os
 import streamlit as st
 
+# set_page_config MUST be the very first Streamlit command in the script —
+# even accessing st.secrets before this point counts as an earlier command
+# and breaks it. See the comment below for why the secrets bridge comes
+# after this line, not before.
+st.set_page_config(page_title="FlavorLens", page_icon="🍽️", layout="wide")
+
 # Streamlit Community Cloud provides secrets via st.secrets, not a .env file.
 # Bridge them into environment variables here, before any local module
 # (config.py, coi_calculator.py, queries.py) is imported — those modules
-# read os.getenv() at import time, so this must run first. Locally, where
-# no secrets.toml exists, this silently does nothing and .env (loaded via
-# python-dotenv in config.py) is used instead.
+# read os.getenv() at import time, so this must run before those imports.
+# Locally, where no secrets.toml exists, this silently does nothing and
+# .env (loaded via python-dotenv in config.py) is used instead.
 try:
     for key, value in st.secrets.items():
         os.environ[key] = str(value)
@@ -29,8 +35,6 @@ import plotly.graph_objects as go
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from python.analytics.coi_calculator import compute_coi, get_effective_weights
 from python.analytics.queries import get_engine, locality_cuisine_metrics, locality_averages
-
-st.set_page_config(page_title="FlavorLens", page_icon="🍽️", layout="wide")
 
 
 # --- Data loading (cached so we don't re-hit Postgres on every interaction) ---
@@ -80,21 +84,28 @@ if sum(custom_weights.values()) == 0:
 with st.spinner("Scoring cuisines..."):
     scored = get_scored_data(custom_weights)
 
-localities = sorted(scored["locality"].unique())
-selected_locality = st.sidebar.selectbox("Locality", localities, index=localities.index("Indiranagar") if "Indiranagar" in localities else 0)
+localities_by_city = scored.groupby("city")["locality"].unique().apply(sorted).to_dict()
+cities = sorted(localities_by_city.keys())
+selected_city = st.sidebar.selectbox("City", cities, index=cities.index("Bangalore") if "Bangalore" in cities else 0)
+
+localities = localities_by_city[selected_city]
+selected_locality = st.sidebar.selectbox(
+    "Locality", localities,
+    index=localities.index("Indiranagar") if selected_city == "Bangalore" and "Indiranagar" in localities else 0
+)
 
 
 # --- Main content ---
 
 st.title("FlavorLens 🍽️")
-st.caption("Bangalore, by locality — v1 scope. See README.md for known limitations.")
+st.caption("Bangalore, New Delhi, Gurgaon, Noida — v2 scope. See README.md for known limitations.")
 
-locality_data = scored[scored["locality"] == selected_locality].copy()
+locality_data = scored[(scored["city"] == selected_city) & (scored["locality"] == selected_locality)].copy()
 
 if locality_data.empty:
     st.warning(f"No data available for {selected_locality}.")
 else:
-    st.subheader(f"Top cuisine opportunities in {selected_locality}")
+    st.subheader(f"Top cuisine opportunities in {selected_locality}, {selected_city}")
 
     display_cols = ["cuisine", "coi", "confidence", "restaurant_count", "avg_rating", "avg_cost"]
     display_df = locality_data[display_cols].rename(columns={
@@ -153,25 +164,28 @@ else:
 
     st.divider()
 
-    # --- City-wide comparison for context ---
-    st.subheader(f"How does {selected_cuisine} compare across Bangalore?")
+    # --- Cross-city comparison for context ---
+    st.subheader(f"How does {selected_cuisine} compare across all cities?")
     cuisine_citywide = scored[scored["cuisine"] == selected_cuisine].sort_values("coi", ascending=False).head(15)
+    cuisine_citywide["locality_label"] = cuisine_citywide["locality"] + " (" + cuisine_citywide["city"] + ")"
 
     bar_fig = px.bar(
         cuisine_citywide,
-        x="locality", y="coi",
+        x="locality_label", y="coi",
         color="confidence",
         color_continuous_scale="Blues",
-        labels={"coi": "COI", "locality": "Locality", "confidence": "Confidence %"},
-        title=f"Top 15 localities for {selected_cuisine} by COI",
+        labels={"coi": "COI", "locality_label": "Locality (City)", "confidence": "Confidence %"},
+        title=f"Top 15 localities for {selected_cuisine} by COI, across all cities",
     )
     bar_fig.update_layout(xaxis_tickangle=-45)
     st.plotly_chart(bar_fig, use_container_width=True)
 
 st.divider()
 st.caption(
-    "FlavorLens v1 — Bangalore, by locality. Data: Zomato Bangalore Restaurants "
-    "(Kaggle), static snapshot. No synthetic data is used; sparse combinations "
+    "FlavorLens v2 — Bangalore, New Delhi, Gurgaon, Noida, by locality. "
+    "20,151 restaurants across 545 city-locality pairs and 114 cuisines. "
+    "Data: Zomato Bangalore Restaurants (Kaggle) + Zomato API global dataset "
+    "(Kaggle), static snapshots. No synthetic data is used; sparse combinations "
     "show reduced confidence rather than filler values. See README.md for full "
     "methodology and known limitations."
 )

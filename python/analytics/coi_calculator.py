@@ -80,6 +80,25 @@ def normalize_0_100(series: pd.Series) -> pd.Series:
     return ((series - min_val) / (max_val - min_val)) * 100
 
 
+def normalize_within_city(df: pd.DataFrame, column: str) -> pd.Series:
+    """
+    Same min-max scaling as normalize_0_100, but computed separately WITHIN
+    each city rather than across the whole combined dataset.
+
+    This matters once you have multiple cities of very different sizes:
+    Bangalore has ~12,500 restaurants vs. ~1,000-5,500 for the other
+    cities. Normalizing globally would mean Bangalore's much wider range
+    of raw values (restaurant counts, votes, etc.) dominates the 0-100
+    scale, making it structurally harder for a genuinely strong opportunity
+    in a smaller city to score as highly as one in Bangalore — not because
+    it's a worse opportunity, but because it's being measured against a
+    different city's scale. Scoring within each city's own distribution is
+    the fair comparison, since "is this a good opportunity in Noida" is
+    inherently a Noida-relative question, not a Bangalore-relative one.
+    """
+    return df.groupby("city")[column].transform(lambda s: normalize_0_100(s))
+
+
 # --- Confidence ------------------------------------------------------------
 
 def compute_confidence(rated_count: pd.Series, total_votes: pd.Series) -> pd.Series:
@@ -119,32 +138,42 @@ def compute_coi(df: pd.DataFrame = None, locality_avg: pd.DataFrame = None,
         df = df if df is not None else locality_cuisine_metrics(engine)
         locality_avg = locality_avg if locality_avg is not None else locality_averages(engine)
 
-    df = df.merge(locality_avg[["locality", "locality_avg_cost"]], on="locality", how="left")
+    df = df.merge(locality_avg[["city", "locality", "locality_avg_cost"]], on=["city", "locality"], how="left")
 
-    # --- Demand: average engagement (votes) per restaurant ---
-    df["demand_score"] = normalize_0_100(df["avg_votes"])
+    # --- Demand: average engagement (votes) per restaurant, normalized WITHIN each city ---
+    df["demand_score"] = normalize_within_city(df, "avg_votes")
 
     # --- Competition: restaurant density, inverted so LOW competition = HIGH opportunity ---
-    raw_competition = normalize_0_100(df["restaurant_count"])
+    # Normalized within each city — density of 300 restaurants means something
+    # different in Bangalore (12,480 total) than in Noida (1,080 total).
+    df["_raw_competition"] = df["restaurant_count"]
+    raw_competition = normalize_within_city(df, "_raw_competition")
     df["competition_score"] = 100 - raw_competition
+    df = df.drop(columns=["_raw_competition"])
 
     # --- Affordability: how much cheaper than the locality's own average ---
     # Positive value = cheaper than locality average = more affordable = higher score.
-    # Some (locality, cuisine) pairs have every restaurant missing cost data
-    # (approx_cost_for_two had 346 nulls in the raw dataset) — in that case
-    # avg_cost is NaN for the whole group. Rather than let that NaN cascade
-    # into a NaN COI for the row, fill with the dataset median (neutral
-    # assumption) before normalizing, matching the stddev handling below.
-    relative_affordability = df["locality_avg_cost"] - df["avg_cost"]
-    relative_affordability_filled = relative_affordability.fillna(relative_affordability.median())
-    df["affordability_score"] = normalize_0_100(relative_affordability_filled)
+    # Missing cost data (346 nulls in the original Bangalore source, and
+    # similar gaps possible in other cities) is filled with that CITY's own
+    # median relative-affordability, not a single dataset-wide median —
+    # a Bangalore price gap and a Gurgaon price gap aren't on the same scale.
+    df["_relative_affordability"] = df["locality_avg_cost"] - df["avg_cost"]
+    df["_relative_affordability"] = df.groupby("city")["_relative_affordability"].transform(
+        lambda s: s.fillna(s.median())
+    )
+    df["affordability_score"] = normalize_within_city(df, "_relative_affordability")
+    df = df.drop(columns=["_relative_affordability"])
 
     # --- Rating stability: inverted normalized stddev (lower spread = more stable) ---
     # Groups with a single rated restaurant have NaN stddev (undefined) —
-    # treat as neutral (50) rather than dropping the row or assuming perfect stability.
-    stddev_filled = df["rating_stddev"].fillna(df["rating_stddev"].median())
-    raw_stability = normalize_0_100(stddev_filled)
+    # treat as neutral (that city's median) rather than dropping the row
+    # or assuming perfect stability.
+    df["_stddev_filled"] = df.groupby("city")["rating_stddev"].transform(
+        lambda s: s.fillna(s.median())
+    )
+    raw_stability = normalize_within_city(df, "_stddev_filled")
     df["rating_stability_score"] = 100 - raw_stability
+    df = df.drop(columns=["_stddev_filled"])
 
     # --- Confidence ---
     df["confidence"] = compute_confidence(df["rated_restaurant_count"], df["total_votes"])
@@ -187,14 +216,14 @@ if __name__ == "__main__":
 
     result = compute_coi()
 
-    print(f"\nTotal (locality, cuisine) pairs scored: {len(result)}")
+    print(f"\nTotal (city, locality, cuisine) triples scored: {len(result)}")
     print("\nTop 10 opportunities overall (by COI):")
     print(result[[
-        "locality", "cuisine", "coi", "confidence",
+        "city", "locality", "cuisine", "coi", "confidence",
         "demand_score", "competition_score", "affordability_score", "rating_stability_score"
     ]].head(10).to_string(index=False))
 
     print("\nBottom 10 (lowest COI):")
     print(result[[
-        "locality", "cuisine", "coi", "confidence"
+        "city", "locality", "cuisine", "coi", "confidence"
     ]].tail(10).to_string(index=False))

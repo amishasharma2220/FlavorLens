@@ -23,15 +23,20 @@ def get_engine():
 
 def locality_cuisine_metrics(engine=None) -> pd.DataFrame:
     """
-    Core aggregation: one row per (locality, cuisine) pair with the raw
-    metrics needed to compute demand, competition, affordability, and
+    Core aggregation: one row per (city, locality, cuisine) triple with the
+    raw metrics needed to compute demand, competition, affordability, and
     rating stability. No normalization or scoring happens here — that's
     coi_calculator.py's job.
+
+    Grouped by (city, locality) together, not locality alone — locality
+    names are not globally unique (e.g. "Sector 15" exists in both Noida
+    and Faridabad). See ARCHITECTURE.md.
     """
     engine = engine or get_engine()
 
     query = text("""
         SELECT
+            r.city,
             r.location AS locality,
             rc.cuisine,
             COUNT(*)                       AS restaurant_count,
@@ -43,8 +48,8 @@ def locality_cuisine_metrics(engine=None) -> pd.DataFrame:
             COUNT(r.rating)                AS rated_restaurant_count
         FROM restaurants r
         JOIN restaurant_cuisines rc ON r.restaurant_id = rc.restaurant_id
-        GROUP BY r.location, rc.cuisine
-        ORDER BY r.location, restaurant_count DESC;
+        GROUP BY r.city, r.location, rc.cuisine
+        ORDER BY r.city, r.location, restaurant_count DESC;
     """)
 
     with engine.connect() as conn:
@@ -56,20 +61,20 @@ def locality_cuisine_metrics(engine=None) -> pd.DataFrame:
 def locality_averages(engine=None) -> pd.DataFrame:
     """
     Locality-wide baselines (across all cuisines) — needed to compute
-    affordability relative to the locality's overall price level, e.g.
-    "this cuisine is cheaper than the Indiranagar average" rather than
-    comparing against a fixed absolute number.
+    affordability relative to the locality's overall price level. Grouped
+    by (city, locality) together, same reasoning as above.
     """
     engine = engine or get_engine()
 
     query = text("""
         SELECT
+            city,
             location AS locality,
             AVG(approx_cost_for_two) AS locality_avg_cost,
             AVG(rating)              AS locality_avg_rating,
             COUNT(*)                 AS locality_restaurant_count
         FROM restaurants
-        GROUP BY location
+        GROUP BY city, location
         ORDER BY locality_restaurant_count DESC;
     """)
 
