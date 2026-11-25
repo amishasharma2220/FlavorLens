@@ -251,7 +251,7 @@ else:
 st.divider()
 st.caption(
     "FlavorLens v2 — Bangalore, New Delhi, Gurgaon, Noida, by locality. "
-    "20,151 restaurants across 545 city-locality pairs and 114 cuisines. "
+    "20,151 restaurants across 367 city-locality pairs and 114 cuisines. "
     "Data: Zomato Bangalore Restaurants (Kaggle) + Zomato API global dataset "
     "(Kaggle), static snapshots. No synthetic data is used; sparse combinations "
     "show reduced confidence rather than filler values. See README.md for full "

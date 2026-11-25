@@ -30,10 +30,11 @@ class DatabaseConfig:
 
 @dataclass
 class LLMConfig:
-    anthropic_key: str = os.getenv("ANTHROPIC_API_KEY", "")
-    openai_key: str = os.getenv("OPENAI_API_KEY", "")
-    model: str = "claude-sonnet-4-6"
-    max_tokens: int = 1024
+    # Reference only: python/llm/copilot.py holds the live Groq settings.
+    groq_key: str = os.getenv("GROQ_API_KEY", "")
+    base_url: str = "https://api.groq.com/openai/v1"
+    model: str = "llama-3.1-8b-instant"
+    max_tokens: int = 400
 
 
 @dataclass

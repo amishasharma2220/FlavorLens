@@ -10,8 +10,7 @@ numpy==1.26.2
 plotly==5.18.0
 streamlit==1.29.0
 
-# LLM
-anthropic==0.8.1
+# LLM (Groq via its OpenAI-compatible API)
 openai>=2.46.0
 
 # Utilities

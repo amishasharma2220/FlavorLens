@@ -16,6 +16,8 @@ Run schema.sql against your database first, then:
     python python/db/load_data.py
 """
 
+import re
+
 import pandas as pd
 from sqlalchemy import create_engine
 
@@ -32,6 +34,42 @@ MULTICITY_FLAT_PATH = "python/data/processed/zomato_global_flat.csv"
 # restaurants, 40 localities) was considered and excluded: thinner
 # coverage per locality than these three. See ARCHITECTURE.md.
 MULTICITY_CITIES = ["New Delhi", "Gurgaon", "Noida"]
+
+
+# --- Locality standardization (multi-city source only) ---------------------
+# The global Zomato dump labels many restaurants by the venue they sit in
+# ("Cyber Hub, DLF Cyber City", "DLF Mall of India, Sector 18,  Noida").
+# Left as-is, every mall becomes its own tiny "locality" (often 1-3
+# restaurants), which fragments counts and lets one restaurant tagged with
+# several cuisines dominate a ranking. We collapse each label to its area:
+# the last comma-separated part, after dropping trailing city names.
+# Labels with no area left ("Ambience Mall, Gurgaon") keep the venue name.
+# Bangalore's `location` column is already area-level and is not touched.
+CITY_TOKENS = {"noida", "greater noida", "gurgaon", "gurugram", "new delhi", "delhi"}
+
+# Same area spelled two ways in the source. Kept explicit and short on
+# purpose: only merges verified by inspecting the data, never fuzzy matching.
+LOCALITY_ALIASES = {
+    "Pashim Vihar": "Paschim Vihar",
+    "Janak Puri": "Janakpuri",
+}
+
+
+def normalize_locality(raw):
+    """'DLF Mall of India, Sector 18,  Noida' -> 'Sector 18'."""
+    if raw is None or (isinstance(raw, float) and pd.isna(raw)):
+        return raw
+    s = re.sub(r"\s+", " ", str(raw)).strip().strip(",").strip()
+    parts = [p.strip() for p in s.split(",") if p.strip()]
+    # Pop trailing city names, but never "Greater Noida" when it is the area itself.
+    while len(parts) > 1 and parts[-1].lower() in CITY_TOKENS and parts[-1].lower() != "greater noida":
+        parts.pop()
+    area = parts[-1] if parts else s
+    # City name glued on without a comma: "Sector 38 Noida" -> "Sector 38"
+    if area.lower() != "greater noida":
+        area = re.sub(r"\s+(noida|gurgaon|gurugram|new delhi)$", "", area, flags=re.I).strip()
+    area = area or s
+    return LOCALITY_ALIASES.get(area, area)
 
 
 def clean_rate(value):
@@ -117,7 +155,9 @@ def load_and_clean_multicity(flat_path: str, cities: list) -> pd.DataFrame:
     df["votes"] = pd.to_numeric(df["votes"], errors="coerce").fillna(0).astype(int)
     df["online_order"] = df["has_online_delivery"].apply(lambda v: bool(v) if pd.notna(v) else None)
     df["book_table"] = df["has_table_booking"].apply(lambda v: bool(v) if pd.notna(v) else None)
-    df["location"] = df["locality"]
+    df["location"] = df["locality"].apply(normalize_locality)
+    print(f"[Multi-city] Localities standardized: {df['locality'].nunique()} -> "
+          f"{df['location'].nunique()} (venue labels collapsed to their area)")
     # rest_type isn't available in this source — left as None (disclosed
     # in schema.sql's column comment), never fabricated.
     df["rest_type"] = None
